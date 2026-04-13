@@ -26,9 +26,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script type="text/babel">
 const { useState, useCallback } = React;
-/* ═══════════════════════════════════════════════════════════
-   DEFECT DEFINITIONS — each is an independent SVG overlay
-   ═══════════════════════════════════════════════════════════ */
+
 const DEFECTS = {
   vsd:     { name:"VSD", full:"Ventricular Septal Defect", group:"Septal", color:"#d44",
              desc:"Hole in the wall between the two lower chambers. Extra blood flows left→right, flooding the lungs.",
@@ -60,13 +58,31 @@ const DEFECTS = {
   avsd:    { name:"AVSD", full:"AV Septal Defect (Complete)", group:"Septal", color:"#d44",
              desc:"Large central hole with a common AV valve instead of separate mitral and tricuspid. Blood mixes freely.",
              fix:"Patch ASD+VSD components, divide common valve into two separate valves (TV and MV)." },
+  truncus: { name:"Truncus", full:"Truncus Arteriosus", group:"Complex", color:"#2070c0",
+             desc:"Single large artery (truncus) arises from both ventricles instead of separate Ao and PA. Always has a VSD. PA branches arise from the truncus. Mixed blood goes to both body and lungs.",
+             fix:"Rastelli repair: VSD patched to direct LV→truncal valve (becomes neo-aorta). PA branches detached and connected to RV via a conduit (RV-PA conduit)." },
+  pa_atresia:{ name:"PA-Atresia", full:"Pulmonary Atresia", group:"Complex", color:"#2070c0",
+             desc:"Pulmonary valve is completely closed (atretic). No blood can flow from RV to PA. Lungs receive blood only through PDA or collaterals. Without VSD, RV is small (PA/IVS). With VSD, similar to severe TOF.",
+             fix:"PA/IVS: staged — BT shunt → RVOT reconstruction or single-ventricle pathway if RV too small. PA/VSD: complete repair with RV-PA conduit and VSD closure." },
+  ta:      { name:"TA", full:"Tricuspid Atresia", group:"Complex", color:"#2070c0",
+             desc:"Tricuspid valve is completely absent. No blood can flow from RA to RV. RV is very small/hypoplastic. Blood must cross an ASD (RA→LA) and reach the lungs via VSD or PDA.",
+             fix:"Single-ventricle palliation: Stage 1 BT shunt (neonate) → Stage 2 Glenn/Hemi-Fontan (4-6 mo) → Stage 3 Fontan completion (2-4 yr). SVC and IVC connected directly to PA." },
+  ma:      { name:"MA", full:"Mitral Atresia", group:"Complex", color:"#2070c0",
+             desc:"Mitral valve is completely absent. No blood can flow from LA to LV. LV is small/hypoplastic. Pulmonary venous blood must cross an ASD (LA→RA) and mix in the right heart.",
+             fix:"Single-ventricle palliation (Norwood/Glenn/Fontan pathway) since the LV cannot support systemic circulation." },
+  hlhs:    { name:"HLHS", full:"Hypoplastic Left Heart Syndrome", group:"Complex", color:"#c02020",
+             desc:"Left heart structures severely underdeveloped — small LV, atretic/stenotic mitral and aortic valves, hypoplastic ascending aorta. Entire systemic circulation depends on RV via PDA. Fatal without intervention.",
+             fix:"Staged palliation: Stage 1 Norwood (neonatal — RV becomes systemic ventricle, neo-aorta constructed, BT shunt) → Stage 2 Glenn (4-6 mo) → Stage 3 Fontan (2-4 yr). Or heart transplant." },
+  iivc:    { name:"Int.IVC", full:"Interrupted Inferior Vena Cava", group:"Connections", color:"#9b6bb0",
+             desc:"IVC does not connect directly to the right atrium. Lower body venous blood drains via the azygos vein into the SVC and then to RA. Often seen with left atrial isomerism (polysplenia/heterotaxy).",
+             fix:"Usually no surgical correction needed for the IVC itself. Important to recognize during cardiac catheterization and Fontan planning — may require bilateral SVC connections." },
+  iaa:     { name:"IAA", full:"Interrupted Aortic Arch", group:"Obstructive", color:"#e07020",
+             desc:"Complete discontinuity of the aortic arch. Upper body supplied by ascending aorta, lower body depends entirely on PDA from PA. Three types: A (beyond L subclavian), B (between L carotid & L subclavian — commonest, associated with DiGeorge), C (between innominate & L carotid).",
+             fix:"Primary repair: direct anastomosis of the two aortic segments + VSD closure (usually present). PGE1 to keep PDA open pre-operatively." },
 };
 
 const DEFECT_IDS = Object.keys(DEFECTS);
 
-/* ═══════════════════════════════════════════════════════════
-   PRESETS — common clinical combinations
-   ═══════════════════════════════════════════════════════════ */
 const PRESETS = [
   { label:"Normal Heart", ids:[], desc:"Healthy four-chamber anatomy" },
   { label:"Isolated VSD", ids:["vsd"] },
@@ -81,20 +97,27 @@ const PRESETS = [
   { label:"Complete AVSD", ids:["avsd"] },
   { label:"AVSD + PDA", ids:["avsd","pda"] },
   { label:"Ebstein + ASD", ids:["ebstein","asd"] },
-  { label:"Ebstein + VSD", ids:["ebstein","vsd"] },
   { label:"d-TGA", ids:["tga"] },
   { label:"d-TGA + VSD", ids:["tga","vsd"] },
   { label:"d-TGA + VSD + PS", ids:["tga","vsd","ps"] },
   { label:"TAPVR", ids:["tapvr"] },
-  { label:"CoA + VSD + PDA", ids:["coa","vsd","pda"] },
   { label:"CoA + AS", ids:["coa","as"] },
-  { label:"AS + AR", ids:["as"], desc:"Aortic stenosis" },
+  { label:"Truncus Arteriosus", ids:["truncus"], desc:"Single outflow + obligatory VSD" },
+  { label:"PA/IVS", ids:["pa_atresia"], desc:"Pulmonary atresia, intact ventricular septum" },
+  { label:"PA/VSD", ids:["pa_atresia","vsd"], desc:"Pulmonary atresia with VSD (severe TOF)" },
+  { label:"PA/VSD + PDA", ids:["pa_atresia","vsd","pda"] },
+  { label:"Tricuspid Atresia", ids:["ta","asd"], desc:"Classic TA with obligatory ASD" },
+  { label:"TA + VSD", ids:["ta","asd","vsd"], desc:"Tricuspid atresia with VSD" },
+  { label:"TA + VSD + PS", ids:["ta","asd","vsd","ps"], desc:"TA, restrictive VSD, PS" },
+  { label:"Mitral Atresia", ids:["ma","asd"], desc:"MA with obligatory ASD" },
+  { label:"HLHS", ids:["hlhs"], desc:"Hypoplastic left heart syndrome" },
+  { label:"HLHS + CoA", ids:["hlhs","coa"] },
+  { label:"Interrupted IVC", ids:["iivc"], desc:"Azygos continuation, heterotaxy" },
+  { label:"IAA + VSD", ids:["iaa","vsd"], desc:"Interrupted aortic arch + VSD" },
+  { label:"IAA + VSD + PDA", ids:["iaa","vsd","pda"], desc:"IAA with PDA-dependent lower body" },
   { label:"Custom...", ids:null, desc:"Build your own combination" },
 ];
 
-/* ═══════════════════════════════════════════════════════════
-   SVG CONSTANTS & PRIMITIVES
-   ═══════════════════════════════════════════════════════════ */
 const K = {
   B:"#4a8fd9", R:"#e24545", P:"#9b6bb0", G:"#3da03d",
   WS:"#8b7355", bgB:"#d4e4f4", bgR:"#f4d4d8", bgM:"#e4d8f0",
@@ -118,19 +141,16 @@ const Arr = ({pts,c,lab,lp}) => {
   </g>);
 };
 
-/* ═══════════════════════════════════════════════════════════
-   BASE HEART + PER-DEFECT OVERLAY LAYERS
-   ═══════════════════════════════════════════════════════════ */
-
-// Chamber fill colors based on active defects
 function getChamberColors(active, post) {
   let ra=K.bgB, la=K.bgR, rv=K.bgB, lv=K.bgR;
   if (post) return {ra,la,rv,lv};
-  if (active.has("vsd")) rv = K.bgM;
+  if (active.has("vsd")||active.has("truncus")) rv = K.bgM;
   if (active.has("asd")) ra = K.bgM;
   if (active.has("avsd")) { ra=K.bgM; rv=K.bgM; la="#f0d8e8"; lv="#f0d8e8"; }
   if (active.has("tapvr")) { ra=K.bgM; la="#e8e8e8"; }
   if (active.has("ebstein") && !post) { rv="#e8ddf4"; }
+  if (active.has("ta")) { rv="#e0e0e0"; ra=K.bgM; la=K.bgM; }
+  if (active.has("ma")||active.has("hlhs")) { lv="#e0e0e0"; la=K.bgM; ra=K.bgM; }
   return {ra,la,rv,lv};
 }
 
@@ -138,6 +158,12 @@ const BaseHeart = ({active, post}) => {
   const cc = getChamberColors(active, post);
   const isAVSD = active.has("avsd") && !post;
   const isEbst = active.has("ebstein") && !post;
+  const isTA = active.has("ta") && !post;
+  const isMA = (active.has("ma")||active.has("hlhs")) && !post;
+  const isTruncus = active.has("truncus") && !post;
+  const isIAA = active.has("iaa") && !post;
+  const isIIVC = active.has("iivc") && !post;
+
   return (<g>
     {/* Chamber fills */}
     <rect x={HX+2} y={HY+2} width={SEP-HX-2} height={AV-HY-2} fill={cc.ra} opacity={.45}/>
@@ -145,10 +171,16 @@ const BaseHeart = ({active, post}) => {
     {isEbst ? (<>
       <rect x={HX+2} y={AV+2} width={SEP-HX-2} height={35} fill={cc.rv} opacity={.2}/>
       <rect x={HX+2} y={AV+37} width={SEP-HX-2} height={BOT-AV-37} fill={cc.rv} opacity={.45}/>
-    </>) : (
+    </>) : isTA ? (
+      <rect x={HX+2} y={AV+2} width={SEP-HX-2} height={BOT-AV-2} fill={cc.rv} opacity={.15}/>
+    ) : (
       <rect x={HX+2} y={AV+2} width={SEP-HX-2} height={BOT-AV-2} fill={cc.rv} opacity={.45}/>
     )}
-    <rect x={SEP+2} y={AV+2} width={HX+HW-SEP-2} height={BOT-AV-2} fill={cc.lv} opacity={.45}/>
+    {isMA ? (
+      <rect x={SEP+2} y={AV+2} width={HX+HW-SEP-2} height={BOT-AV-2} fill={cc.lv} opacity={.15}/>
+    ) : (
+      <rect x={SEP+2} y={AV+2} width={HX+HW-SEP-2} height={BOT-AV-2} fill={cc.lv} opacity={.45}/>
+    )}
 
     {/* Walls */}
     <rect x={HX} y={HY} width={HW} height={HH} fill="none" stroke={K.WS} strokeWidth={3}/>
@@ -162,11 +194,20 @@ const BaseHeart = ({active, post}) => {
       <line x1={HX} y1={AV} x2={HX+HW} y2={AV} stroke={K.WS} strokeWidth={2.5}/>
     </>)}
 
-    {/* Veins — TAPVR changes PV routing */}
+    {/* Veins */}
     <line x1={42} y1={85} x2={HX} y2={98} stroke={K.B} strokeWidth={5} strokeLinecap="round"/>
     <Tx x={36} y={83} t="SVC" c={K.B} s={8} b a="end"/>
-    <line x1={42} y1={132} x2={HX} y2={128} stroke={K.B} strokeWidth={5} strokeLinecap="round"/>
-    <Tx x={36} y={135} t="IVC" c={K.B} s={8} b a="end"/>
+
+    {isIIVC ? (<>
+      <line x1={42} y1={145} x2={42} y2={115} stroke={K.B} strokeWidth={4} strokeLinecap="round" strokeDasharray="5,3"/>
+      <line x1={42} y1={115} x2={42} y2={90} stroke={K.B} strokeWidth={4} strokeLinecap="round"/>
+      <Tx x={28} y={150} t="IVC" c={K.B} s={8} b a="end"/>
+      <Tx x={22} y={128} t="Azygos↑" c={K.P} s={7} b a="end"/>
+    </>) : (<>
+      <line x1={42} y1={132} x2={HX} y2={128} stroke={K.B} strokeWidth={5} strokeLinecap="round"/>
+      <Tx x={36} y={135} t="IVC" c={K.B} s={8} b a="end"/>
+    </>)}
+
     {active.has("tapvr") && !post ? (<>
       <path d="M278,90 Q278,105 260,118 L200,130 Q160,135 120,125 L82,108" fill="none" stroke={K.R} strokeWidth={4} strokeLinecap="round"/>
       <Tx x={284} y={88} t="PV" c={K.R} s={8} b a="start"/>
@@ -177,30 +218,48 @@ const BaseHeart = ({active, post}) => {
       <line x1={278} y1={125} x2={HX+HW} y2={122} stroke={K.R} strokeWidth={5} strokeLinecap="round"/>
     </>)}
 
-    {/* Great arteries — from ventricles */}
-    {active.has("tga") && !post ? (<>
+    {/* Great arteries */}
+    {isTruncus ? (<>
+      <path d="M160,148 L160,42 Q160,22 160,10" fill="none" stroke={K.P} strokeWidth={9} strokeLinecap="round"/>
+      <path d="M160,20 Q140,10 110,12" fill="none" stroke={K.P} strokeWidth={5} strokeLinecap="round"/>
+      <path d="M160,20 Q180,10 210,12" fill="none" stroke={K.P} strokeWidth={5} strokeLinecap="round"/>
+      <Tx x={160} y={-2} t="Truncus" c={K.P} s={9} b/>
+      <Tx x={100} y={8} t="PA" c={K.B} s={7} b a="end"/>
+      <Tx x={220} y={8} t="Ao" c={K.R} s={7} b a="start"/>
+    </>) : active.has("tga") && !post ? (<>
       <path d="M125,148 L125,42 Q125,28 110,22 L72,12" fill="none" stroke={K.R} strokeWidth={7} strokeLinecap="round"/>
       <Tx x={62} y={14} t="Ao" c={K.R} s={10} b a="end"/>
       <path d="M195,148 L195,42 Q195,28 210,22 L248,12" fill="none" stroke={K.B} strokeWidth={7} strokeLinecap="round"/>
       <Tx x={256} y={14} t="PA" c={K.B} s={10} b a="start"/>
     </>) : (<>
-      {!active.has("coa") ? (
-        <path d="M195,148 L195,42 Q195,28 210,22 L248,12" fill="none" stroke={K.R} strokeWidth={7} strokeLinecap="round"/>
+      {!active.has("coa") && !isIAA ? (
+        <path d="M195,148 L195,42 Q195,28 210,22 L248,12" fill="none" stroke={isMA?K.R:"#e24545"} strokeWidth={isMA?4:7} strokeLinecap="round"/>
       ) : null}
-      <path d="M125,148 L125,42 Q125,28 110,22 L72,12" fill="none" stroke={K.B} strokeWidth={7} strokeLinecap="round"/>
-      <Tx x={62} y={14} t="PA" c={K.B} s={10} b a="end"/>
-      {!active.has("coa") && <Tx x={256} y={14} t="Ao" c={K.R} s={10} b a="start"/>}
+      {active.has("pa_atresia") && !post ? (
+        <path d="M125,148 L125,42 Q125,28 110,22 L72,12" fill="none" stroke="#999" strokeWidth={7} strokeLinecap="round" strokeDasharray="2,6"/>
+      ) : (
+        <path d="M125,148 L125,42 Q125,28 110,22 L72,12" fill="none" stroke={K.B} strokeWidth={7} strokeLinecap="round"/>
+      )}
+      <Tx x={62} y={14} t="PA" c={active.has("pa_atresia")&&!post?"#999":K.B} s={10} b a="end"/>
+      {!active.has("coa") && !isIAA && <Tx x={256} y={14} t="Ao" c={K.R} s={10} b a="start"/>}
     </>)}
 
     {/* Chamber labels */}
     <Tx x={120} y={114} t="RA" c={K.B} s={13} b/>
     <Tx x={200} y={114} t="LA" c={K.R} s={13} b/>
-    <Tx x={120} y={205} t="RV" c={K.B} s={13} b/>
-    <Tx x={200} y={205} t="LV" c={K.R} s={13} b/>
+    {isTA ? (
+      <Tx x={120} y={205} t="RV" c="#aaa" s={10} b/>
+    ) : (
+      <Tx x={120} y={205} t="RV" c={K.B} s={13} b/>
+    )}
+    {isMA ? (
+      <Tx x={200} y={205} t="LV" c="#aaa" s={10} b/>
+    ) : (
+      <Tx x={200} y={205} t="LV" c={K.R} s={13} b/>
+    )}
   </g>);
 };
 
-/* Individual defect overlay layers */
 const layers = {
   vsd: (post) => post ? (<g key="vsd">
     <rect x={SEP-10} y={184} width={20} height={26} fill={K.G} stroke="#1a7a1a" strokeWidth={2}/>
@@ -306,14 +365,106 @@ const layers = {
     <Tx x={260} y={AV} t="Common AV valve" c="#d44" s={7} b a="start"/>
     <Arr pts={[[185,115],[160,125],[135,115]]} c={K.P}/>
   </g>),
+
+  /* ═══ NEW DEFECTS ═══ */
+
+  truncus: (post) => post ? (<g key="truncus">
+    <rect x={SEP-10} y={184} width={20} height={26} fill={K.G} stroke="#1a7a1a" strokeWidth={2}/>
+    <Tx x={SEP} y={200} t="VSD✓" c="#fff" s={7} b/>
+    <rect x={115} y={34} width={18} height={12} fill="none" stroke={K.G} strokeWidth={2}/>
+    <Tx x={100} y={56} t="RV-PA" c={K.G} s={7} b a="end"/>
+    <Tx x={100} y={64} t="conduit✓" c={K.G} s={6} b a="end"/>
+  </g>) : (<g key="truncus">
+    <rect x={SEP-10} y={184} width={20} height={26} fill="#fff" stroke="#2070c0" strokeWidth={2} strokeDasharray="4,2"/>
+    <Tx x={SEP} y={200} t="VSD" c="#2070c0" s={8} b/>
+    <Tx x={55} y={30} t="Mixed blood" c={K.P} s={7} b a="end"/>
+    <Tx x={55} y={39} t="to both" c={K.P} s={7} b a="end"/>
+  </g>),
+
+  pa_atresia: (post) => post ? (<g key="pa_atresia">
+    <rect x={108} y={AV-14} width={28} height={10} fill="none" stroke={K.G} strokeWidth={2}/>
+    <Tx x={96} y={AV-18} t="RVOT✓" c={K.G} s={7} b a="end"/>
+  </g>) : (<g key="pa_atresia">
+    <rect x={108} y={AV-7} width={32} height={7} fill="#c02020"/>
+    <rect x={112} y={AV-9} width={24} height={11} fill="none" stroke="#c02020" strokeWidth={2}/>
+    <Tx x={95} y={AV-14} t="ATRETIC" c="#c02020" s={7} b a="end"/>
+    <Tx x={95} y={AV+3} t="No flow" c="#c02020" s={6} b a="end"/>
+  </g>),
+
+  ta: (post) => post ? (<g key="ta">
+    <Tx x={95} y={AV+10} t="Fontan✓" c={K.G} s={7} b a="end"/>
+    <path d="M42,85 Q30,50 72,12" fill="none" stroke={K.G} strokeWidth={3} strokeLinecap="round" strokeDasharray="5,3"/>
+    <Tx x={35} y={52} t="SVC→PA" c={K.G} s={6} b a="end"/>
+  </g>) : (<g key="ta">
+    <rect x={HX+2} y={AV-3} width={SEP-HX-4} height={7} fill="#c02020"/>
+    <Tx x={95} y={AV-10} t="TV ABSENT" c="#c02020" s={7} b a="end"/>
+    <Tx x={120} y={195} t="Hypo-" c="#999" s={7} b/>
+    <Tx x={120} y={204} t="plastic" c="#999" s={7} b/>
+    <Arr pts={[[143,108],[175,108]]} c={K.P} lab="RA→LA" lp={[SEP,93]}/>
+  </g>),
+
+  ma: (post) => post ? (<g key="ma">
+    <Tx x={225} y={AV+10} t="Fontan✓" c={K.G} s={7} b a="start"/>
+    <path d="M278,90 Q290,50 248,12" fill="none" stroke={K.G} strokeWidth={3} strokeLinecap="round" strokeDasharray="5,3"/>
+    <Tx x={295} y={55} t="SVC→PA" c={K.G} s={6} b a="start"/>
+  </g>) : (<g key="ma">
+    <rect x={SEP+2} y={AV-3} width={HX+HW-SEP-4} height={7} fill="#c02020"/>
+    <Tx x={225} y={AV-10} t="MV ABSENT" c="#c02020" s={7} b a="start"/>
+    <Tx x={200} y={195} t="Hypo-" c="#999" s={7} b/>
+    <Tx x={200} y={204} t="plastic" c="#999" s={7} b/>
+    <Arr pts={[[175,108],[143,108]]} c={K.P} lab="LA→RA" lp={[SEP,93]}/>
+  </g>),
+
+  hlhs: (post) => post ? (<g key="hlhs">
+    <Tx x={225} y={AV+10} t="Fontan" c={K.G} s={7} b a="start"/>
+    <Tx x={225} y={AV+19} t="pathway✓" c={K.G} s={6} b a="start"/>
+    <rect x={130} y={34} width={60} height={12} fill="none" stroke={K.G} strokeWidth={2}/>
+    <Tx x={160} y={43} t="Neo-Ao✓" c={K.G} s={7} b/>
+  </g>) : (<g key="hlhs">
+    <rect x={SEP+2} y={AV-3} width={HX+HW-SEP-4} height={7} fill="#c02020"/>
+    <Tx x={225} y={AV-10} t="MV atretic" c="#c02020" s={7} b a="start"/>
+    <rect x={182} y={AV-7} width={30} height={5} fill="#c02020"/>
+    <Tx x={225} y={AV-18} t="AV atretic" c="#c02020" s={6} b a="start"/>
+    <Tx x={200} y={192} t="Tiny" c="#c02020" s={8} b/>
+    <Tx x={200} y={202} t="LV" c="#c02020" s={8} b/>
+    <Tx x={256} y={24} t="Hypo Ao" c="#c02020" s={7} b a="start"/>
+    <Arr pts={[[175,108],[143,108]]} c={K.P} lab="LA→RA" lp={[SEP,93]}/>
+    <Tx x={55} y={170} t="RV=systemic" c={K.R} s={7} b a="end"/>
+    <Tx x={55} y={179} t="ventricle" c={K.R} s={6} b a="end"/>
+  </g>),
+
+  iivc: (post) => post ? (<g key="iivc">
+    <Tx x={28} y={130} t="Azygos✓" c={K.G} s={7} b a="end"/>
+  </g>) : (<g key="iivc">
+    <Tx x={55} y={160} t="No direct" c={K.P} s={7} b a="end"/>
+    <Tx x={55} y={169} t="IVC→RA" c={K.P} s={7} b a="end"/>
+  </g>),
+
+  iaa: (post) => {
+    const base = "M195,148 L195,42 Q195,28 210,22 L248,12 Q272,6 286,22 L298,52 L298,";
+    return post ? (<g key="iaa">
+      <path d={base+"78 L298,125 L298,185"} fill="none" stroke={K.R} strokeWidth={7} strokeLinecap="round"/>
+      <Tx x={256} y={14} t="Ao" c={K.R} s={10} b a="start"/>
+      <rect x={289} y={70} width={18} height={22} fill="none" stroke={K.G} strokeWidth={2.5}/>
+      <Tx x={314} y={84} t="Repaired✓" c={K.G} s={7} b a="start"/>
+      <Arr pts={[[298,130],[298,185]]} c={K.R}/>
+    </g>) : (<g key="iaa">
+      <path d={base+"68"} fill="none" stroke={K.R} strokeWidth={7} strokeLinecap="round"/>
+      <Tx x={256} y={14} t="Ao" c={K.R} s={10} b a="start"/>
+      <rect x={282} y={68} width={32} height={24} fill="#f4f3f0" stroke="#e07020" strokeWidth={2.5}/>
+      <Tx x={298} y={82} t="GAP" c="#e07020" s={8} b/>
+      <Tx x={318} y={100} t="IAA ✕" c="#e07020" s={8} b a="start"/>
+      <path d="M298,92 L298,115 L298,185" fill="none" stroke={K.R} strokeWidth={4} strokeLinecap="round" strokeDasharray="6,4"/>
+      <Tx x={318} y={145} t="PDA-" c={K.P} s={7} b a="start"/>
+      <Tx x={318} y={154} t="dependent" c={K.P} s={7} b a="start"/>
+    </g>);
+  },
 };
 
-/* ═══════════════════════════════════════════════════════════
-   CONFLICT RULES
-   ═══════════════════════════════════════════════════════════ */
-// AVSD already includes ASD+VSD concept; some combos are mutually exclusive
 const CONFLICTS = {
-  avsd: ["asd","vsd"], // AVSD subsumes ASD+VSD
+  avsd: ["asd","vsd"],
+  hlhs: ["ma","as"],
+  truncus: ["tga"],
 };
 function resolveConflicts(ids) {
   let s = new Set(ids);
@@ -323,15 +474,12 @@ function resolveConflicts(ids) {
   return s;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   MAIN APP
-   ═══════════════════════════════════════════════════════════ */
 const ff = "'IBM Plex Mono','SF Mono','Menlo',monospace";
 
 function App() {
   const [active, setActive] = useState(new Set());
   const [post, setPost] = useState(false);
-  const [view, setView] = useState("presets"); // presets | detail
+  const [view, setView] = useState("presets");
 
   const toggle = useCallback((id) => {
     setActive(prev => {
@@ -353,7 +501,6 @@ function App() {
   const activeList = [...active];
   const isNormal = activeList.length === 0;
 
-  /* ── PRESETS VIEW ── */
   if (view === "presets") return (
     <div style={{fontFamily:ff,minHeight:"100vh",background:"#f4f3f0",color:"#1a1a1a"}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -362,12 +509,14 @@ function App() {
           <h1 style={{margin:0,fontSize:16,fontWeight:700,letterSpacing:2}}>CHD ANATOMY ATLAS</h1>
           <div style={{fontSize:10,opacity:.5,letterSpacing:1,marginTop:2}}>COMPOSABLE MULTI-DEFECT · PATIENT EDUCATION</div>
         </div>
-        <div style={{background:"#333",padding:"4px 12px",fontSize:9,fontWeight:600,letterSpacing:1.5}}>OFFLINE</div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <a href="index.html" style={{background:"#333",padding:"4px 12px",fontSize:9,fontWeight:600,letterSpacing:1.5,color:"#f4f3f0",textDecoration:"none"}}>← HOME</a>
+          <div style={{background:"#333",padding:"4px 12px",fontSize:9,fontWeight:600,letterSpacing:1.5}}>OFFLINE</div>
+        </div>
       </div>
-
       <div style={{padding:20,maxWidth:900,margin:"0 auto"}}>
         <div style={{fontSize:11,color:"#888",marginBottom:16,lineHeight:1.6}}>
-          Choose a preset combination or build a custom one. Each condition is rendered as a layer on the same heart diagram.
+          Choose a preset combination or build a custom one. Each condition is rendered as a layer on the same heart diagram. <strong>{PRESETS.length - 1} presets</strong> · <strong>{DEFECT_IDS.length} defects</strong>.
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(190px, 1fr))",gap:8}}>
           {PRESETS.map((p,i) => {
@@ -401,12 +550,9 @@ function App() {
     </div>
   );
 
-  /* ── DETAIL / BUILDER VIEW ── */
   return (
     <div style={{fontFamily:ff,minHeight:"100vh",background:"#f4f3f0",color:"#1a1a1a"}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-
-      {/* Header */}
       <div style={{background:"#1a1a1a",color:"#f4f3f0",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <button onClick={()=>setView("presets")} style={{background:"none",border:"2px solid #555",color:"#f4f3f0",padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:ff,letterSpacing:1}}>←</button>
@@ -432,8 +578,6 @@ function App() {
           )}
         </div>
       </div>
-
-      {/* Defect toggle bar */}
       <div style={{background:"#eae7e2",padding:"10px 16px",borderBottom:"2px solid #ccc"}}>
         <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:"#888",marginBottom:6}}>
           TOGGLE CONDITIONS — tap to add/remove
@@ -459,11 +603,7 @@ function App() {
           </button>
         </div>
       </div>
-
-      {/* Content */}
       <div style={{padding:14,maxWidth:960,margin:"0 auto",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-
-        {/* Diagram */}
         <div style={{gridColumn:"1/-1",background:"#fff",border:"2px solid #1a1a1a",padding:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:6}}>
             <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:post?K.G:isNormal?K.B:"#d44",display:"flex",alignItems:"center",gap:6}}>
@@ -491,8 +631,6 @@ function App() {
             </svg>
           </div>
         </div>
-
-        {/* Condition descriptions */}
         {isNormal ? (
           <div style={{gridColumn:"1/-1",background:"#fff",border:"2px solid #1a1a1a",padding:14}}>
             <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:"#888",borderBottom:"2px solid #ddd",paddingBottom:5,marginBottom:8}}>NORMAL HEART</div>
@@ -516,8 +654,6 @@ function App() {
             );
           })
         )}
-
-        {/* Combined summary when multiple */}
         {activeList.length > 1 && (
           <div style={{gridColumn:"1/-1",background:post?"#f0f8f0":"#fdf6ee",border:`2px solid ${post?K.G:"#c4956a"}`,padding:14}}>
             <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:post?K.G:"#c4956a",borderBottom:`2px solid ${post?K.G:"#c4956a"}`,paddingBottom:5,marginBottom:8}}>
@@ -548,18 +684,15 @@ function App() {
             </div>
           </div>
         )}
-
-        {/* Abbreviations */}
         <div style={{gridColumn:"1/-1",background:"#fff",border:"2px solid #ddd",padding:12}}>
           <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:"#aaa",marginBottom:5}}>ABBREVIATIONS</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))",gap:"2px 14px",fontSize:10,color:"#666"}}>
-            {[["RA","Right Atrium"],["LA","Left Atrium"],["RV","Right Ventricle"],["LV","Left Ventricle"],["PA","Pulmonary Artery"],["Ao","Aorta"],["PV","Pulmonary Veins"],["SVC","Sup. Vena Cava"],["IVC","Inf. Vena Cava"],["TV","Tricuspid Valve"],["MV","Mitral Valve"],["RVOT","RV Outflow Tract"],["AV","Atrioventricular"],["aRV","Atrialized RV"],["CoA","Coarctation"]].map(([a,f])=>(
+            {[["RA","Right Atrium"],["LA","Left Atrium"],["RV","Right Ventricle"],["LV","Left Ventricle"],["PA","Pulmonary Artery"],["Ao","Aorta"],["PV","Pulmonary Veins"],["SVC","Sup. Vena Cava"],["IVC","Inf. Vena Cava"],["TV","Tricuspid Valve"],["MV","Mitral Valve"],["RVOT","RV Outflow Tract"],["AV","Atrioventricular"],["aRV","Atrialized RV"],["CoA","Coarctation"],["IAA","Interrupted Arch"],["HLHS","Hypo. Left Heart"],["TA","Tricuspid Atresia"],["MA","Mitral Atresia"],["PDA","Patent Ductus"]].map(([a,f])=>(
               <div key={a}><strong style={{color:"#1a1a1a"}}>{a}</strong> — {f}</div>
             ))}
           </div>
         </div>
       </div>
-
       <div style={{textAlign:"center",fontSize:9,color:"#bbb",padding:"10px 20px",letterSpacing:1}}>
         CHD ANATOMY ATLAS · COMPOSABLE MULTI-DEFECT · FOR PATIENT EDUCATION
       </div>
